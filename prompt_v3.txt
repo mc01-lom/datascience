@@ -1,0 +1,490 @@
+Crie um dashboard HTML standalone de Spend Analysis com as seções abaixo, na
+ordem indicada. Use dados sintéticos representativos (~5.000 transações,
+~38 fornecedores, 12 categorias N1, volumetria total ~R$10bi, período 2022–2026)
+embutidos como array JSON diretamente no arquivo HTML, antes do encerramento da
+tag </body>.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SCHEMA DE DADOS — campo por campo (uma transação = um objeto JSON)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cada transação deve conter exatamente os seguintes campos:
+
+  pedido               String   — identificador único da ordem de compra
+  dt_pagamento         String   — "YYYY-MM-DD"
+  ano                  Integer  — ex.: 2023
+  mes                  Integer  — 1–12
+  trimestre            String   — "Q1" | "Q2" | "Q3" | "Q4"
+  valor_bruto          Float    — valor em R$ (ex.: 125000.00)
+  quantidade           Integer  — unidades/ocorrências da transação
+  nome_fornecedor      String   — razão social ou nome fantasia
+  cnpj_raiz            String   — 8 dígitos (ex.: "12345678")
+  categoria_n1         String   — um dos 12 segmentos UNSPSC do banco
+  categoria_n2         String   — subcategoria dentro do N1
+  esteira              String   — "Contratual" | "Pedido sem Contrato" |
+                                  "Baixo Valor" | "Mercado IGA" |
+                                  "Extra Compras" | "Fora da Política"
+  flag_maverick        Boolean  — true se compra sem contrato vigente
+  flag_tail_spend      Boolean  — true se fornecedor < R$100K/ano naquele ano
+  flag_contrato        Boolean  — true se possui contrato ativo no período
+  nome_area            String   — área requisitante (ex.: "Tecnologia")
+  diretoria            String   — diretoria/superintendência do requisitante
+  descricao_natureza   String   — natureza de pagamento (ex.: "Serviços de TI")
+  status_contrato      String   — "Ativo" | "Vencido" | "Sem Contrato"
+  dt_vencimento_contrato String — "YYYY-MM-DD" ou null se sem contrato
+  flag_novo_fornecedor Boolean  — true na primeira transação do fornecedor no
+                                  período 2022–2026
+
+ATENÇÃO — coerência interna dos dados sintéticos:
+  • flag_maverick = true ⟺ flag_contrato = false
+  • esteira "Fora da Política" e "Pedido sem Contrato" devem ter flag_maverick = true
+  • esteira "Contratual" deve ter flag_contrato = true e flag_maverick = false
+  • dt_vencimento_contrato preenchida apenas quando flag_contrato = true
+  • Incluir ~20 contratos com vencimento nos próximos 90 dias a partir de
+    2026-06-01, e ~15 com vencimento entre 91–180 dias, para popular a seção 5.7
+  • O salto de novos fornecedores em 2025 deve ser visível nos dados:
+    flag_novo_fornecedor = true em ~800 transações de 2025 vs. ~150 em 2024
+  • Distribuição de valor_bruto fortemente assimétrica (log-normal), com cauda
+    longa: a maioria das transações entre R$1K–R$500K, alguns outliers > R$10M
+  • 12 categorias N1 com pelo menos 3 subcategorias N2 cada; ao menos 3 categorias
+    N2 com único fornecedor (para popular a seção 6.5 / 13)
+  • Spend total dos 38 fornecedores somando ~R$10bi no período
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 1 — CARDS DE RESUMO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Quatro cards dispostos em linha no topo da página:
+
+  1. Spend Total (R$) — formatado como "R$ X,XXbi"
+  2. Total de Transações — número inteiro com separador de milhar
+  3. Total de Fornecedores Ativos — CNPJs únicos com pelo menos uma transação
+     nos últimos 12 meses do dataset
+  4. Ticket Médio (R$) — valor_bruto total ÷ nº de transações, formatado como
+     "R$ X,XXmi" ou "R$ X,XXK" conforme a magnitude
+
+Cada card deve exibir: ícone representativo, rótulo, valor principal.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 2 — ANÁLISE TEMPORAL E DE TENDÊNCIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: O spend está crescendo? Há sazonalidade? O crescimento é
+de volume ou de preço? Onde estão os picos?
+
+2.1 Evolução mensal do spend (2022–2026)
+    Tipo: linha com área preenchida
+    Eixo X: mês/ano  |  Eixo Y: spend em R$
+    Tooltip: mês, spend, variação MoM (%)
+
+2.2 Spend anual consolidado com variação YoY
+    Tipo: barras verticais
+    Cada barra: ano no eixo X, spend no eixo Y
+    Anotação sobre cada barra: variação % em relação ao ano anterior
+    (ex.: "+12,3%" em verde ou "−5,1%" em vermelho)
+
+2.3 Sazonalidade — spend médio por mês do ano (Jan–Dez)
+    Tipo: linha
+    Agregar todos os anos; exibir valor médio de spend por mês calendário
+    Destacar o mês de pico com marcador diferenciado
+
+2.4 Concentração trimestral
+    Tipo: barras agrupadas (um grupo por ano, 4 barras = Q1/Q2/Q3/Q4)
+    Finalidade: evidenciar se Q4 concentra desproporcionalmente o gasto
+    Anotação: % do spend anual representado pelo Q4 de cada ano
+
+2.5 Decomposição do crescimento: Volume vs. Ticket Médio
+    Tipo: barras empilhadas ou waterfall por ano
+    Mostrar quanto da variação YoY em R$ se explica por:
+      Δ volume   = variação no número de transações × ticket médio do ano base
+      Δ ticket   = variação no ticket médio × número de transações do ano atual
+    Legenda clara distinguindo as duas componentes
+
+2.6 Heatmap Categoria × Mês
+    Tipo: heatmap (matriz)
+    Linhas = 12 categorias N1  |  Colunas = meses (Jan–Dez, agregado de todos
+    os anos)  |  Intensidade = spend médio mensal
+    Tooltip: categoria, mês, valor
+    (Esta visualização pertence também à análise de categoria, mas sua posição
+    aqui reforça a leitura temporal)
+
+2.7 Novos fornecedores por período
+    Tipo: barras por trimestre (flag_novo_fornecedor = true)
+    Anotar com seta e rótulo o salto de 2025 (+90,8%: de ~6.130 para ~11.694
+    fornecedores acumulados) como anomalia a investigar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 3 — PARETO DE FORNECEDORES E CATEGORIAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Quem e o quê concentram o gasto? Qual a classificação ABC?
+A concentração está se agravando ao longo do tempo?
+
+3.1 Curva de Pareto — Fornecedores
+    Tipo: gráfico combinado (barras + linha no eixo secundário)
+    Barras: spend por fornecedor, top 30–40, ordenado decrescente
+    Linha: % acumulado de spend (eixo Y direito, escala 0–100%)
+    Linha de referência horizontal nos 80%
+    Anotação: "X fornecedores representam 80% do spend"
+
+3.2 Curva de Pareto — Categorias N2
+    Mesmo formato do 3.1, aplicado às subcategorias N2 (todas, não só top)
+
+3.3 Classificação ABC de fornecedores
+    Tipo: tabela com as colunas:
+      Ranking | Nome | Categoria N1 | Spend Total | % do Total | % Acumulado |
+      Faixa ABC
+    Regras de classificação e cor das células da coluna Faixa ABC:
+      A = primeiros fornecedores que somam até 80% do spend → vermelho/laranja
+      B = fornecedores que somam os próximos 15% → amarelo
+      C = fornecedores que somam os últimos 5% → verde
+    Exibir todos os 38 fornecedores; tabela com scroll interno se necessário
+
+3.4 Evolução temporal do grupo Pareto
+    Tipo: linha por ano
+    Métrica: número de fornecedores necessários para atingir 80% do spend
+    (se esse número cai, a concentração está aumentando; se sobe, está diluindo)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 4 — SPEND POR ESTEIRA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Como o gasto está distribuído pelas modalidades de compra?
+As esteiras de risco (Fora da Política, Pedido sem Contrato) estão crescendo?
+
+4.1 Distribuição por esteira
+    Tipo: barras horizontais (uma barra por esteira)
+    As 6 esteiras: Contratual · Pedido sem Contrato · Baixo Valor ·
+                   Mercado IGA · Extra Compras · Fora da Política
+    Exibir: valor absoluto em R$ e % do spend total
+    Ordenar por valor decrescente
+
+4.2 Evolução temporal por esteira
+    Tipo: linhas múltiplas (uma linha por esteira) ao longo do tempo (mensal)
+    Finalidade: identificar se esteiras de risco estão crescendo em participação
+    Destacar visualmente "Fora da Política" e "Pedido sem Contrato"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 5 — MAVERICK SPEND E CONTRACT COVERAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Quanto do gasto está coberto por contrato? Onde e por quem
+ocorre o gasto fora de política? O problema está concentrado ou disperso?
+
+Benchmarks de referência (Aberdeen Group, 2011):
+  Contract Coverage meta > 80%  |  Maverick Spend < 10% (best-in-class: 5%)
+
+5.1 Gauge de Contract Coverage
+    Tipo: velocímetro/semicírculo
+    Valor: % de spend com flag_contrato = true
+    Faixas de cor: verde se ≥ 80%, amarelo se 60–79%, vermelho se < 60%
+    Exibir o valor numérico no centro do gauge
+
+5.2 Donut — spend com contrato vs. maverick
+    Tipo: pizza/donut com duas fatias
+    Fatia 1: spend com flag_maverick = false  |  Fatia 2: flag_maverick = true
+    Exibir: valor absoluto em R$ e % em cada fatia
+
+5.3 Evolução mensal do % maverick
+    Tipo: linha temporal
+    Linhas de referência horizontais: tracejada em 10% (meta) e
+    pontilhada em 5% (best-in-class)
+    Tooltip: mês, % maverick, valor absoluto maverick
+
+5.4 Maverick spend por categoria N1
+    Tipo: barras horizontais ordenadas pelo % maverick (decrescente)
+    Barras coloridas: verde se < 5%, amarelo se 5–10%, vermelho se > 10%
+    Linhas de referência verticais: 5% e 10%
+
+5.5 Maverick spend por diretoria
+    Tipo: barras horizontais por diretoria/superintendência
+    Métrica: % do spend da diretoria que é maverick
+    Ordenar por % maverick decrescente
+
+5.6 Concentração do maverick
+    Tipo: card destacado
+    Exibir:
+      • Nº de fornecedores únicos no maverick spend
+      • % do valor maverick representado pelo top 5 desses fornecedores
+    Interpretação indicada: "Se concentrado → oportunidade de contratualizar;
+    se disperso → problema de processo/cultura"
+
+5.7 Alertas de vencimento de contratos
+    Tipo: tabela
+    Colunas: Fornecedor | Categoria N1 | Valor do Contrato (R$) |
+             Dt. Vencimento | Dias Restantes
+    Filtrar: contratos com dt_vencimento_contrato entre hoje (2026-06-01) e
+             180 dias à frente
+    Ordenar por Dias Restantes (crescente)
+    Colorir a coluna Dias Restantes: vermelho ≤ 90 dias, amarelo 91–180 dias
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 6 — SPEND POR CATEGORIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Como o gasto está estruturado por tipo de compra? Quais
+categorias têm fragmentação, concentração ou má classificação?
+
+6.1 Distribuição por segmento N1
+    Tipo: pizza/donut com os 12 segmentos N1
+    OBRIGATÓRIO: a cor de cada N1 aqui deve ser idêntica à usada em todos os
+    outros gráficos do dashboard (paleta consistente)
+    Tooltip: nome, spend, %
+
+6.2 Treemap hierárquico N1 → N2
+    Tipo: treemap
+    Área proporcional ao spend
+    Dois níveis: N1 como bloco pai, N2 como subdivisões internas
+    Tooltip: hierarquia completa (N1 > N2), spend, %
+
+6.3 Fragmentação de fornecedores por categoria
+    Tipo: barras verticais ordenadas por nº de fornecedores decrescente
+    Métrica: nº de CNPJs distintos por categoria N1
+    Nota de interpretação: "Alta fragmentação + alto HHI pode indicar
+    concentração de valor em poucos fornecedores apesar de muitos cadastrados"
+
+6.4 Alerta de qualidade de dado
+    Tipo: card destacado
+    Métrica: % do spend em categoria "Outros / Não Classificado"
+    Cor do card: vermelho se > 5%, amarelo se 2–5%, verde se ≤ 2%
+    Meta de qualidade de dado: ≤ 5%
+
+6.5 Single-source categories (risco de fornecimento)
+    Tipo: lista ou barras horizontais
+    Listar categorias N2 com exatamente 1 fornecedor associado no período
+    Exibir por linha: categoria N2, fornecedor único, spend total afetado, % do
+    spend total
+    Card de resumo: "X categorias N2 (Y% do total de N2s) têm apenas 1
+    fornecedor, representando R$ Z em spend"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 7 — ANÁLISE POR FORNECEDOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Quem são os fornecedores críticos? Há dependências ocultas?
+Quais estão crescendo fora do radar?
+
+7.1 Top 20 fornecedores — tabela
+    Colunas: Ranking | Nome | Categoria N1 | Spend Total | % do Total |
+             % Acumulado | Faixa ABC
+    Colorir a coluna Faixa ABC com as mesmas regras da seção 3.3
+
+7.2 Scatter de perfil de fornecedores
+    Tipo: gráfico de bolhas
+    Eixo X: nº de transações  |  Eixo Y: spend total
+    Tamanho da bolha: ticket médio  |  Cor: categoria N1 (paleta consistente)
+    Tooltip: nome, categoria, spend, nº transações, ticket médio
+    Finalidade: distinguir perfis (alto valor/baixo volume vs. baixo
+    valor/alto volume)
+
+7.3 Fornecedores em múltiplas categorias
+    Tipo: tabela
+    Colunas: Nome | Nº de Categorias N1 | Categorias (lista) | Spend Total
+    Filtrar: apenas fornecedores presentes em ≥ 2 categorias N1
+    Ordenar por Nº de Categorias decrescente
+
+7.4 Fornecedores em ascensão (top 10 YoY)
+    Tipo: tabela
+    Colunas: Nome | Categoria N1 | Spend Ano Anterior | Spend Ano Atual |
+             Variação (R$) | Variação (%)
+    Filtrar: comparar o último ano completo com o anterior; ordenar por
+    variação % decrescente
+    Colorir a coluna Variação (%): verde para crescimento > 20%,
+    amarelo 10–20%, sem cor < 10%
+
+7.5 Fornecedores ativos vs. inativos
+    Tipo: card de resumo + mini-tabela
+    Definição: ativo = pelo menos 1 transação nos últimos 12 meses do dataset
+    Métricas no card: total de CNPJs, ativos, inativos, % inativos
+    Mini-tabela: lista dos inativos com nome, categoria e último dt_pagamento
+    (candidatos à limpeza de cadastro)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 8 — ÍNDICE DE CONCENTRAÇÃO HHI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: O spend está concentrado em poucos fornecedores?
+Qual o risco de dependência por categoria?
+
+Referência: U.S. DOJ — HHI < 1.000 = não concentrado |
+            1.000–1.800 = moderadamente concentrado | > 1.800 = altamente concentrado
+
+Fórmula: HHI = Σ (share_i)²  onde share_i = spend_i / spend_total × 100
+(resultado entre 0 e 10.000)
+
+8.1 Card HHI global
+    Valor numérico do HHI calculado sobre todo o dataset
+    Indicação visual da faixa com cor de fundo: verde/amarelo/vermelho
+    Legenda das faixas DOJ visível no card
+
+8.2 HHI por categoria N1
+    Tipo: barras horizontais ordenadas por HHI decrescente
+    Linhas de referência verticais: 1.000 (limiar moderado) e 1.800 (limiar
+    alto)
+    Colorir cada barra de acordo com a faixa que seu HHI pertence
+    Tooltip: categoria, HHI, número de fornecedores, fornecedor dominante
+    e share dele
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 9 — TAIL SPEND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: Quanto do gasto está pulverizado em fornecedores de baixo
+valor? Onde estão as oportunidades de consolidação?
+
+Threshold: fornecedor com gasto anual < R$100.000 naquele ano = tail spend
+(usar flag_tail_spend do dataset)
+
+9.1 Cards de resumo do tail spend
+    Quatro métricas em cards:
+      • Nº de fornecedores no tail
+      • Valor total do tail spend (R$)
+      • % do spend total que é tail
+      • % dos fornecedores que estão no tail
+
+9.2 Tail spend por categoria N1
+    Tipo: barras horizontais duplas (uma barra = valor tail, outra = valor
+    non-tail) para cada categoria, empilhadas ou agrupadas
+    Ordenar por valor de tail spend decrescente
+    Exibir % do tail sobre o total de cada categoria
+
+9.3 Tabela de candidatos à consolidação
+    Colunas: Nome do Fornecedor | Categoria N1 | Spend Anual (R$) | Nº de
+             Transações | Ticket Médio
+    Listar todos os fornecedores com flag_tail_spend = true no último ano
+    Ordenar por Spend Anual decrescente
+    Nota: "Candidatos à consolidação com fornecedores estratégicos da
+    mesma categoria"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEÇÃO 10 — PRODUTO / SERVIÇO — NATUREZA DE PAGAMENTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pergunta de negócio: O que o banco está comprando? A natureza do gasto é
+consistente com a categoria? Há outliers por tipo de despesa?
+
+Naturezas de pagamento a usar nos dados sintéticos:
+  Serviços de TI · Consultoria Externa · Honorários Advocatícios ·
+  Benefícios · Seguros · Facilities · Logística · Marketing · BPO ·
+  Viagens · Material de Consumo · Impressão · Outros Serviços
+
+10.1 Spend por natureza de pagamento
+     Tipo: barras horizontais ordenadas por valor decrescente
+     Exibir: valor absoluto (R$) e % do total
+
+10.2 Heatmap natureza × categoria N1
+     Tipo: heatmap (matriz)
+     Linhas = naturezas de pagamento  |  Colunas = categorias N1
+     Intensidade = spend no cruzamento
+     Finalidade: identificar inconsistências (ex.: natureza "Benefícios" em
+     categoria "Tecnologia")
+     Tooltip: natureza, categoria, valor, % do total
+
+10.3 Alerta de qualidade de dado — natureza genérica
+     Tipo: card
+     Métrica: % do spend classificado como "Outros Serviços"
+     Cor: vermelho se > 10%, amarelo se 5–10%, verde se ≤ 5%
+
+10.4 Box plot por natureza de pagamento (escala log10)
+     Tipo: box plot
+     Um box por natureza  |  Valores em log10(valor_bruto)
+     Exibir: mediana, IQR (Q1–Q3), bigodes e outliers individuais
+     Título deve indicar explicitamente: "Escala logarítmica (log₁₀) —
+     aplicada para normalizar a assimetria da distribuição de valores"
+
+10.5 Histograma geral de valores de transação (escala log10)
+     Tipo: histograma
+     Eixo X: log10(valor_bruto) com ticks rotulados em R$ (ex.: R$1K, R$10K,
+     R$100K, R$1M, R$10M)
+     Curva de distribuição normal sobreposta (linha tracejada)
+     Título deve indicar: "Distribuição de valores — escala log₁₀"
+     Anotações: indicar a moda, o valor mediano e o valor médio
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REQUISITOS TÉCNICOS E DE DESIGN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ESTRUTURA DO ARQUIVO HTML:
+  • Um único arquivo .html autocontido, sem dependências de servidor local
+  • Plotly.js carregado via CDN (https://cdn.plot.ly/plotly-latest.min.js)
+  • Array JSON dos dados embutido em uma tag <script id="rawData" type="application/json">
+    antes do </body>; o código JavaScript deve ler via
+    JSON.parse(document.getElementById('rawData').textContent)
+  • Toda a lógica de cálculo (HHI, Pareto, ABC, YoY, etc.) implementada em
+    JavaScript no próprio arquivo, executada sobre os dados JSON em memória
+
+NAVEGAÇÃO:
+  • Menu de navegação fixo no topo (sticky header) com âncoras para cada seção
+  • Cada seção identificada por um <section id="secX"> correspondente
+  • Largura máxima do conteúdo: 1400px centralizado
+
+INTERATIVIDADE (Plotly nativa):
+  • Todos os gráficos devem ter tooltips informativos:
+    — Valores monetários no formato "R$ X,XXmi" ou "R$ X,XXbi"
+    — Percentuais com uma casa decimal: "XX,X%"
+    — Nome completo do fornecedor/categoria (sem truncamento no tooltip)
+  • Gráficos com muitos itens (Pareto, tabelas longas): zoom e pan habilitados
+  • Heatmaps: hover revela valores absolutos, não apenas intensidade
+  • Gauge (5.1): sem interatividade necessária além do tooltip de valor
+
+DESIGN E PALETA:
+  • Cor de fundo do dashboard: branco (#FFFFFF) ou cinza muito claro (#F8F9FA)
+  • Paleta corporativa:
+    — Azul escuro: #1B3A6B (títulos, cabeçalhos, bordas de card)
+    — Azul médio: #2E5FAC (barras principais, destaques)
+  • Paleta de 12 cores para as categorias N1 — FIXA e CONSISTENTE em todo o
+    dashboard (a mesma categoria N1 SEMPRE usa a mesma cor em qualquer gráfico):
+    Definir um objeto JavaScript categoryColors = { "NomeN1": "#hexcode", ... }
+    e referenciá-lo em TODOS os traces de todos os gráficos
+  • Cores semânticas:
+    — Verde: #28A745 (dentro da meta, positivo)
+    — Amarelo/âmbar: #FFC107 (atenção, próximo do limite)
+    — Vermelho: #DC3545 (fora da meta, alerta, risco)
+  • Cada seção deve ter:
+    — Título principal em azul escuro (#1B3A6B)
+    — Subtítulo em itálico com a pergunta de negócio respondida pela seção
+    — Benchmark/meta de referência exibido quando aplicável (ex.: "Meta Aberdeen:
+      Contract Coverage > 80%")
+
+FORMATAÇÃO DE VALORES:
+  • Monetários: usar função formatBRL(value) que retorna:
+    — "R$ X,XXbi" se value ≥ 1.000.000.000
+    — "R$ X,XXmi" se value ≥ 1.000.000
+    — "R$ X,XXK"  se value ≥ 1.000
+    — "R$ X,XX"   se value < 1.000
+    Usar vírgula como separador decimal e ponto como separador de milhar
+    (padrão pt-BR)
+  • Percentuais: sempre com uma casa decimal, ex.: "12,3%"
+  • Escalas logarítmicas: sempre indicar no título ou subtítulo do gráfico
+    que a escala é log₁₀ e o motivo ("para normalizar a assimetria da
+    distribuição de valores")
+
+PERFORMANCE:
+  • O arquivo HTML completo (incluindo os ~5.000 registros JSON) deve carregar
+    e renderizar todos os gráficos em menos de 5 segundos em um navegador moderno
+  • Usar Plotly.newPlot (não addTraces iterativo) para cada gráfico
+  • Calcular todos os agregados uma única vez no carregamento e armazenar em
+    variáveis reutilizáveis — não recalcular por gráfico
+
+COMPATIBILIDADE:
+  • Deve abrir corretamente (sem erros no console) nos navegadores:
+    Chrome 120+, Firefox 120+, Safari 17+, Edge 120+
+  • Não usar APIs experimentais ou prefixos proprietários
+  • Não requer conexão com internet além do CDN do Plotly.js no carregamento
+    inicial
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ORDEM DE GERAÇÃO — siga estritamente esta sequência
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Gere o array JSON de ~5.000 transações respeitando TODAS as regras de
+   coerência interna listadas no Schema de Dados.
+2. Implemente a função formatBRL e o objeto categoryColors.
+3. Implemente todos os cálculos de agregação em uma única função
+   processData() chamada uma vez no carregamento.
+4. Renderize os gráficos na ordem das seções (1 a 10).
+5. Valide mentalmente: para cada seção, confirme que os dados sintéticos
+   produzirão visualizações não triviais (sem gráficos com uma única barra,
+   heatmaps todos iguais, etc.).
+
+Entregue o HTML completo em um único bloco de código.
