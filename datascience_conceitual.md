@@ -1,9 +1,3 @@
-# Spend Analysis — Desenho Conceitual das Análises
-**Área de Compras · Banco Itaú · Junho 2026**
-
-> Documento de referência conceitual para as 6 análises dos Quick Wins.
-> Estrutura: **Pergunta de Negócio → Indicador/Métrica → Visão/Gráfico**
-> Template da base já concluído. Prazo de entrega: final de junho/2026.
 
 ---
 
@@ -171,6 +165,3 @@
 | Ivalua (2026) | Tail spend: 5–20% savings via consolidação |
 | UNSPSC v26 — UNDP | Taxonomia oficial (158.448 códigos) |
 
----
-
-*Documento gerado em: junho/2026 · Responsável: Artur Carisio Nasciutti · Área de Compras — Banco Itaú*
